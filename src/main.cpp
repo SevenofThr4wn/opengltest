@@ -16,6 +16,8 @@
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
+const bool SHOW_MENU = true;
+
 // ================= CAMERA =================
 glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -58,6 +60,23 @@ void processInput(GLFWwindow *window)
     }
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_RELEASE)
         fPressed = false;
+
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+    static bool pPressed = false;
+
+    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS && !pPressed)
+    {
+        paused = !paused;
+        pPressed = true;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_RELEASE)
+        pPressed = false;
+
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        speed *= 2.0f;
 }
 
 // ================= MOUSE =================
@@ -155,17 +174,30 @@ unsigned int createShader()
     return p;
 }
 
+// ================= ImGui Setup =================
+void setup_imgui(GLFWwindow *window)
+{
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    (void)io;
+
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 330");
+}
+
 // ================= MAIN =================
 int main()
 {
     glfwInit();
     GLFWwindow *window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "3D Engine", NULL, NULL);
     glfwMakeContextCurrent(window);
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 330");
+    setup_imgui(window);
 
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
 
@@ -204,13 +236,17 @@ int main()
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ImGui::Begin("Debug");
-        ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
-        ImGui::Checkbox("Wireframe", &wireframe);
-        ImGui::End();
+        if (SHOW_MENU)
+        {
+            static float f = 0.0f;
+            static int counter = 0;
 
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            ImGui::Begin("Debug");
+
+            ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
+            ImGui::Checkbox("Wireframe", &wireframe);
+            ImGui::End();
+        }
 
         processInput(window);
         updateFPS(window);
@@ -231,9 +267,20 @@ int main()
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
+    // ImGUI Cleanup
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    glfwDestroyWindow(window);
     glfwTerminate();
+
+    return 0;
 }
