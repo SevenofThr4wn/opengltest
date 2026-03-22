@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build OpenGL",
+      "type": "shell",
+      "command": "g++",
+      "args": [
+        "src/main.cpp",
+        "src/glad.c",
+        "src/Shader.cpp",
+        "src/Camera.cpp",
+
+        "src/imgui/imgui.cpp",
+        "src/imgui/imgui_draw.cpp",
+        "src/imgui/imgui_tables.cpp",
+        "src/imgui/imgui_widgets.cpp",
+        "src/imgui/backends/imgui_impl_glfw.cpp",
+        "src/imgui/backends/imgui_impl_opengl3.cpp",
+
+        "-Iinclude",
+        "-Isrc/imgui",
+        "-Isrc/imgui/backends",
+
+        "-Llib",
+        "-lglfw3",
+        "-lopengl32",
+        "-lgdi32",
+
+        "-o",
+        "app.exe"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
