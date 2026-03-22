@@ -10,13 +10,13 @@
 #include "imgui_impl_opengl3.h"
 
 #include <iostream>
-#include <sstream>
 
 // ================= SETTINGS =================
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-const bool SHOW_MENU = true;
+bool showMenu = true;
+bool mouseLocked = true;
 
 // ================= CAMERA =================
 glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
@@ -38,6 +38,9 @@ bool wireframe = false;
 bool paused = false;
 
 // ================= INPUT =================
+
+/// @brief Handles user input.
+/// @param window The window instance.
 void processInput(GLFWwindow *window)
 {
     float speed = 2.5f * deltaTime;
@@ -61,8 +64,17 @@ void processInput(GLFWwindow *window)
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_RELEASE)
         fPressed = false;
 
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    static bool escPressed = false;
+
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS && !escPressed)
+    {
+        mouseLocked = false;
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        escPressed = true;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_RELEASE)
+        escPressed = false;
 
     static bool pPressed = false;
 
@@ -80,8 +92,23 @@ void processInput(GLFWwindow *window)
 }
 
 // ================= MOUSE =================
+
+/// @brief Handles mouse callbacks
+/// @param window The window instance.
+/// @param xpos The x position of the cursor.
+/// @param ypos The y position of the cursor.
 void mouse_callback(GLFWwindow *window, double xpos, double ypos)
 {
+    if (!mouseLocked)
+        return;
+    
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && !mouseLocked)
+    {
+        mouseLocked = true;
+        firstMouse = true;
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    }
+
     if (firstMouse)
     {
         lastX = xpos;
@@ -111,26 +138,10 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos)
     cameraFront = glm::normalize(direction);
 }
 
-// ================= FPS =================
-void updateFPS(GLFWwindow *window)
-{
-    static double prev = glfwGetTime();
-    static int frames = 0;
-
-    double current = glfwGetTime();
-    frames++;
-
-    if (current - prev >= 1.0)
-    {
-        std::stringstream ss;
-        ss << "FPS: " << frames;
-        glfwSetWindowTitle(window, ss.str().c_str());
-        frames = 0;
-        prev = current;
-    }
-}
-
 // ================= SHADER =================
+
+/// @brief Creates the Vertex & Fragment Shaders and attaches them to the application.
+/// @return The program with the shaders attached.
 unsigned int createShader()
 {
     const char *vs = R"(
@@ -175,6 +186,9 @@ unsigned int createShader()
 }
 
 // ================= ImGui Setup =================
+
+/// @brief Configures ImGui for the application.
+/// @param window The window instance
 void setup_imgui(GLFWwindow *window)
 {
     IMGUI_CHECKVERSION();
@@ -192,11 +206,69 @@ void setup_imgui(GLFWwindow *window)
 }
 
 // ================= MAIN =================
+
+/// @brief Updates & processes user input.
+/// @param window The window instance
+void update(GLFWwindow *window)
+{
+    processInput(window);
+}
+
+/// @brief Renders the 3d cube simiulation, shaders onto the window.
+/// @param shader The fragment & vertex shaders.
+/// @param VAO Vertex Array Object
+/// @param modelLoc The location of the model on the screen
+/// @param viewLoc The location of the view on the screen.
+void render(unsigned int shader, unsigned int VAO, int modelLoc, int viewLoc)
+{
+    glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glUseProgram(shader);
+
+    float current = glfwGetTime();
+
+    glm::mat4 projection = glm::perspective(
+        glm::radians(45.0f),
+        (float)SCR_WIDTH / SCR_HEIGHT,
+        0.1f,
+        100.0f);
+
+    int projLoc = glGetUniformLocation(shader, "projection");
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+    glm::mat4 model = glm::rotate(
+        glm::mat4(1.0f),
+        current,
+        glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+    glBindVertexArray(VAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+}
+
+/// @brief Renders the ImGui menu on the window if the `showMenu` boolean is set to `true`
+void renderUI()
+{
+    float fps = deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f;
+
+    ImGui::Begin("Debug");
+
+    ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
+    ImGui::Checkbox("Wireframe", &wireframe);
+    ImGui::End();
+}
+
+/// @brief Main loop of the program.
+/// @return returns `0` if ran sucessfully or `-1` if an error occured.
 int main()
 {
     glfwInit();
     GLFWwindow *window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "3D Engine", NULL, NULL);
     glfwMakeContextCurrent(window);
+    glfwSwapInterval(0);
     setup_imgui(window);
 
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
@@ -207,6 +279,11 @@ int main()
 
     unsigned int shader = createShader();
 
+    int modelLoc = glGetUniformLocation(shader, "model");
+    int viewLoc = glGetUniformLocation(shader, "view");
+    int projLoc = glGetUniformLocation(shader, "projection");
+
+    // Cube Vertices
     float vertices[] = {
         -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, -0.5,
         -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5,
@@ -232,43 +309,32 @@ int main()
         deltaTime = current - lastFrame;
         lastFrame = current;
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+        // ===== UPDATE =====
+        update(window);
 
-        if (SHOW_MENU)
+        // ===== RENDER =====
+        render(shader, VAO, modelLoc, viewLoc);
+
+        if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS)
+            showMenu = !showMenu;
+
+        if (showMenu)
         {
             static float f = 0.0f;
             static int counter = 0;
-
-            ImGui::Begin("Debug");
-
-            ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
-            ImGui::Checkbox("Wireframe", &wireframe);
-            ImGui::End();
         }
 
-        processInput(window);
-        updateFPS(window);
+        if (showMenu)
+        {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
 
-        glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            renderUI();
 
-        glUseProgram(shader);
-
-        glm::mat4 model = glm::rotate(glm::mat4(1.0f), current, glm::vec3(0.5f, 1.0f, 0.0f));
-        glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
-
-        glUniformMatrix4fv(glGetUniformLocation(shader, "model"), 1, GL_FALSE, glm::value_ptr(model));
-        glUniformMatrix4fv(glGetUniformLocation(shader, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(glGetUniformLocation(shader, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-
-        glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
