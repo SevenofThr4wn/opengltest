@@ -8,6 +8,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "implot.h"
 
 #include <iostream>
 
@@ -39,8 +40,21 @@ bool paused = false;
 
 // ================= INPUT =================
 
-/// @brief Handles user input.
-/// @param window The window instance.
+/**
+ * @brief Processes all keyboard input for camera movement and engine controls.
+ *
+ * Handles:
+ * - WASD movement (forward, backward, strafing)
+ * - Shift for speed boost
+ * - Wireframe toggle (F key)
+ * - Pause toggle (P key)
+ * - Mouse unlock (ESC key)
+ *
+ * Movement is frame-rate independent via deltaTime scaling.
+ * Input is ignored when mouse is not locked (UI mode).
+ *
+ * @param window Pointer to the active GLFW window.
+ */
 void processInput(GLFWwindow *window)
 {
     float speed = 2.5f * deltaTime;
@@ -93,10 +107,23 @@ void processInput(GLFWwindow *window)
 
 // ================= MOUSE =================
 
-/// @brief Handles mouse callbacks
-/// @param window The window instance.
-/// @param xpos The x position of the cursor.
-/// @param ypos The y position of the cursor.
+/**
+ * @brief Handles mouse movement to control camera orientation.
+ *
+ * Converts raw cursor movement into yaw/pitch rotation using
+ * a sensitivity multiplier. Updates the camera front vector
+ * for directional movement and view matrix calculation.
+ *
+ * Includes:
+ * - First-mouse protection to prevent sudden jumps
+ * - Pitch clamping to avoid gimbal lock
+ *
+ * Input is ignored when mouse is unlocked.
+ *
+ * @param window Pointer to the GLFW window.
+ * @param xpos Current X position of the cursor.
+ * @param ypos Current Y position of the cursor.
+ */
 void mouse_callback(GLFWwindow *window, double xpos, double ypos)
 {
     if (!mouseLocked)
@@ -140,8 +167,17 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos)
 
 // ================= SHADER =================
 
-/// @brief Creates the Vertex & Fragment Shaders and attaches them to the application.
-/// @return The program with the shaders attached.
+/**
+ * @brief Compiles and links a basic vertex and fragment shader program.
+ *
+ * The shader pipeline:
+ * - Vertex Shader: Applies model, view, and projection transforms
+ * - Fragment Shader: Outputs a constant color
+ *
+ * No error checking is currently implemented (can be added later).
+ *
+ * @return OpenGL shader program ID.
+ */
 unsigned int createShader()
 {
     const char *vs = R"(
@@ -187,12 +223,24 @@ unsigned int createShader()
 
 // ================= ImGui Setup =================
 
-/// @brief Configures ImGui for the application.
-/// @param window The window instance
+/**
+ * @brief Initializes and configures Dear ImGui for rendering.
+ *
+ * Sets up:
+ * - ImGui context
+ * - Input handling (keyboard/gamepad navigation)
+ * - Dark theme styling
+ * - GLFW + OpenGL3 backend bindings
+ *
+ * Must be called after GLFW window creation and context setup.
+ *
+ * @param window Pointer to the GLFW window.
+ */
 void setup_imgui(GLFWwindow *window)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
     (void)io;
 
@@ -207,18 +255,39 @@ void setup_imgui(GLFWwindow *window)
 
 // ================= MAIN =================
 
-/// @brief Updates & processes user input.
-/// @param window The window instance
+/**
+ * @brief Updates per-frame logic and processes input.
+ *
+ * Acts as the main update step of the engine loop.
+ * Currently handles only input, but can be expanded to include:
+ * - Physics updates
+ * - Game logic
+ * - Scene updates
+ *
+ * @param window Pointer to the GLFW window.
+ */
 void update(GLFWwindow *window)
 {
     processInput(window);
 }
 
-/// @brief Renders the 3d cube simiulation, shaders onto the window.
-/// @param shader The fragment & vertex shaders.
-/// @param VAO Vertex Array Object
-/// @param modelLoc The location of the model on the screen
-/// @param viewLoc The location of the view on the screen.
+/**
+ * @brief Renders the 3D scene
+ *
+ * Performs:
+ * - Screen clearing (color + depth buffer)
+ * - Shader activation
+ * - Model and view matrix calculation
+ * - Uniform updates
+ * - Cube draw call
+ *
+ * Rotation is time-based for smooth animation.
+ *
+ * @param shader Compiled shader program ID.
+ * @param VAO Vertex Array Object containing cube data.
+ * @param modelLoc Location of the model matrix uniform.
+ * @param viewLoc Location of the view matrix uniform.
+ */
 void render(unsigned int shader, unsigned int VAO, int modelLoc, int viewLoc)
 {
     glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
@@ -249,7 +318,16 @@ void render(unsigned int shader, unsigned int VAO, int modelLoc, int viewLoc)
     glDrawArrays(GL_TRIANGLES, 0, 36);
 }
 
-/// @brief Renders the ImGui menu on the window if the `showMenu` boolean is set to `true`
+/**
+ * @brief Renders the ImGui debug interface.
+ *
+ * Displays:
+ * - Current FPS
+ * - Wireframe toggle checkbox
+ *
+ * Only called when UI is enabled (showMenu = true).
+ * Assumes ImGui frame has already been started.
+ */
 void renderUI()
 {
     float fps = deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f;
@@ -261,8 +339,26 @@ void renderUI()
     ImGui::End();
 }
 
-/// @brief Main loop of the program.
-/// @return returns `0` if ran sucessfully or `-1` if an error occured.
+/**
+ * @brief Entry point of the application.
+ *
+ * Responsible for:
+ * - Initializing GLFW and OpenGL context
+ * - Setting up ImGui
+ * - Creating shaders and buffers
+ * - Running the main game loop
+ * - Handling update/render cycles
+ * - Cleaning up resources on exit
+ *
+ * Main Loop Structure:
+ * 1. Calculate delta time
+ * 2. Update logic (input, state)
+ * 3. Render scene
+ * 4. Render UI (optional)
+ * 5. Swap buffers and poll events
+ *
+ * @return 0 on successful execution.
+ */
 int main()
 {
     glfwInit();
@@ -309,13 +405,18 @@ int main()
         deltaTime = current - lastFrame;
         lastFrame = current;
 
+        // ===== TERMINATE KEYBIND ====
+
+        if(glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS)
+            glfwTerminate();
+
         // ===== UPDATE =====
         update(window);
 
         // ===== RENDER =====
         render(shader, VAO, modelLoc, viewLoc);
 
-        if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS)
+        if (glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS)
             showMenu = !showMenu;
 
         if (showMenu)
@@ -344,6 +445,7 @@ int main()
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+    ImPlot::DestroyContext();
 
     glfwDestroyWindow(window);
     glfwTerminate();
